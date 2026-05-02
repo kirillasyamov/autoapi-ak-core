@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package accounts;
+
+service AccountsService {
+  rpc CreateAccount(CreateAccountRequest) returns (AccountResponse);
+  rpc GetAccount(GetAccountRequest) returns (AccountResponse);
+}

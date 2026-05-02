@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package auth_factor;
+
+service AuthFactorService {
+  rpc EnableTotp(EnableTotpRequest) returns (EnableTotpResponse);
+  rpc VerifyTotp(VerifyTotpRequest) returns (VerifyTotpResponse);
+}

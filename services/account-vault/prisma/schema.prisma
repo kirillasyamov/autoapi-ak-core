@@ -1,0 +1,11 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
