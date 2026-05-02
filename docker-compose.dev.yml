@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      retries: 5
+    restart: unless-stopped
+  account-vault:
+    build:
+      context: ./services/account-vault
+      target: dev
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - VAULT_MASTER_KEY=${VAULT_MASTER_KEY}
+    ports:
+      - "${ACCOUNT_VAULT_PORT}:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/account-vault:/app
+      - /app/node_modules
+    restart: unless-stopped
+volumes:
+  postgres_data:

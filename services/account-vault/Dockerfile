@@ -1,17 +1,31 @@
-FROM node:20-alpine AS builder
+# ───── Stage 1: builder ─────
+FROM node:25-alpine:3.22 AS builder
+
 WORKDIR /app
+
 COPY package*.json ./
 RUN npm ci
+
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
-RUN addgroup -S app && adduser -S app -G app
+# ───── Stage 2: dev ─────
+FROM node:25-alpine:3.22 AS dev
+
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+CMD ["npm", "run", "start:dev"]
+
+# ───── Stage 3: prod ─────
+FROM node:25-alpine:3.22 AS prod
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-USER app
 EXPOSE 3002
-HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://localhost:3002/healthz || exit 1
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/main"]
