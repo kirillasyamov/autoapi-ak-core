@@ -1,8 +1,128 @@
 syntax = "proto3";
 
-package federation;
+package account_vault.federation;
 
-service FederationService {
-  rpc LinkIdentity(LinkIdentityRequest) returns (FederationResponse);
-  rpc GetIdentity(GetIdentityRequest) returns (FederationResponse);
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+enum IdentityProvider {
+	IDENTITY_PROVIDER_UNSPECIFIED = 0;
+	IDENTITY_PROVIDER_GOOGLE = 1;
+	IDENTITY_PROVIDER_GITHUB = 2;
+}
+
+message LinkedIdentity {
+	string id = 1;
+	string account_id = 2;
+	IdentityProvider provider = 3;
+	string provider_account_id = 4;
+	optional string provider_email = 5;
+	optional string display_name = 6;
+	optional string avatar_url = 7;
+	google.protobuf.Timestamp linked_at = 8;
+}
+
+// ─────────────────────────────────────────────
+// LinkIdentity
+//
+// http_status:
+// 201 Created — новая привязка создана
+// 409 Conflict — провайдер уже привязан к другому аккаунту
+// ─────────────────────────────────────────────
+
+message LinkIdentityRequest {
+	string account_id = 1;
+	IdentityProvider provider = 2;
+	string provider_account_id = 3;
+	optional string provider_email = 4;
+	optional string display_name = 5;
+	optional string avatar_url = 6;
+	optional string encrypted_access_token = 7;
+	optional string encrypted_refresh_token = 8;
+}
+
+message LinkIdentityResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional LinkedIdentity identity = 2; // absent при 409
+}
+
+// ─────────────────────────────────────────────
+// UnlinkIdentity
+//
+// http_status:
+// 204 No Content — отвязка успешна
+// 409 Conflict — нельзя отвязать единственный способ входа
+// (нет пароля + это последний провайдер)
+// ─────────────────────────────────────────────
+
+message UnlinkIdentityRequest {
+	string account_id = 1;
+	IdentityProvider provider = 2;
+}
+
+// http_status=204 → gateway не включает поля в тело клиенту.
+// http_status=409 → meta.message содержит причину.
+message UnlinkIdentityResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	string account_id = 2;
+	IdentityProvider unlinked_provider = 3;
+}
+
+// ─────────────────────────────────────────────
+// GetAccountByProvider
+//
+// http_status:
+// 200 OK — аккаунт найден
+// 404 Not Found — провайдер не привязан ни к одному аккаунту
+// ─────────────────────────────────────────────
+
+message GetAccountByProviderRequest {
+	IdentityProvider provider = 1;
+	string provider_account_id = 2;
+}
+
+// Включает полные данные аккаунта + matched_identity,
+// чтобы auth-orchestrator не делал второй запрос в AccountVaultAccounts.
+message LinkedAccount {
+	string id = 1;
+	string email = 2;
+	optional string username = 3;
+	optional string display_name = 4;
+	optional string avatar_url = 5;
+	string status = 6;
+	string role = 7;
+	bool email_verified = 8;
+	bool has_password = 9;
+	bool totp_enabled = 10;
+	google.protobuf.Timestamp created_at = 11;
+	google.protobuf.Timestamp updated_at = 12;
+	optional google.protobuf.Timestamp last_login_at = 13;
+	LinkedIdentity matched_identity = 14;
+}
+
+message GetAccountByProviderResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional LinkedAccount account = 2; // absent при 404
+}
+
+// ─────────────────────────────────────────────
+// ListIdentities
+//
+// http_status: 200 OK (пустой список — тоже 200, не 404)
+// ─────────────────────────────────────────────
+
+message ListIdentitiesRequest {
+	string account_id = 1;
+}
+
+message ListIdentitiesResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	repeated LinkedIdentity identities = 2;
+}
+
+service AccountVaultFederation {
+	rpc LinkIdentity (LinkIdentityRequest) returns (LinkIdentityResponse);
+	rpc UnlinkIdentity (UnlinkIdentityRequest) returns (UnlinkIdentityResponse);
+	rpc GetAccountByProvider (GetAccountByProviderRequest) returns (GetAccountByProviderResponse);
+	rpc ListIdentities (ListIdentitiesRequest) returns (ListIdentitiesResponse);
 }

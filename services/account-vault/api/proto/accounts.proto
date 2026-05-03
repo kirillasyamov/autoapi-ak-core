@@ -1,8 +1,167 @@
 syntax = "proto3";
 
-package accounts;
+package account_vault.accounts;
 
-service AccountsService {
-  rpc CreateAccount(CreateAccountRequest) returns (AccountResponse);
-  rpc GetAccount(GetAccountRequest) returns (AccountResponse);
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+enum AccountStatus {
+	ACCOUNT_STATUS_UNSPECIFIED = 0;
+	ACCOUNT_STATUS_ACTIVE = 1;
+	ACCOUNT_STATUS_PENDING_VERIFICATION = 2;
+	ACCOUNT_STATUS_DISABLED = 3;
+	ACCOUNT_STATUS_BANNED = 4;
+	ACCOUNT_STATUS_DELETED = 5;
+}
+
+enum AccountRole {
+	ACCOUNT_ROLE_UNSPECIFIED = 0;
+	ACCOUNT_ROLE_USER = 1;
+	ACCOUNT_ROLE_ADMIN = 2;
+	ACCOUNT_ROLE_SUPER_ADMIN = 3;
+}
+
+enum AccountSortField {
+	ACCOUNT_SORT_FIELD_UNSPECIFIED = 0;
+	ACCOUNT_SORT_FIELD_CREATED_AT = 1;
+	ACCOUNT_SORT_FIELD_EMAIL = 2;
+	ACCOUNT_SORT_FIELD_USERNAME = 3;
+	ACCOUNT_SORT_FIELD_LAST_LOGIN = 4;
+}
+
+enum SortDirection {
+	SORT_DIRECTION_UNSPECIFIED = 0;
+	SORT_DIRECTION_ASC = 1;
+	SORT_DIRECTION_DESC = 2;
+}
+
+message Account {
+	string id = 1;
+	string email = 2;
+	optional string username = 3;
+	optional string display_name = 4;
+	optional string avatar_url = 5;
+	AccountStatus status = 6;
+	AccountRole role = 7;
+	bool email_verified = 8;
+	bool has_password = 9;
+	bool totp_enabled = 10;
+	optional string ban_reason = 11;
+	google.protobuf.Timestamp created_at = 12;
+	google.protobuf.Timestamp updated_at = 13;
+	optional google.protobuf.Timestamp last_login_at = 14;
+	optional google.protobuf.Timestamp deleted_at = 15;
+}
+
+// ─────────────────────────────────────────────
+// Контракт http_status, который сервис обязан проставить:
+//
+// CreateAccount → 201 Created
+// GetAccountBy* / Update*
+// MarkEmailVerified
+// *Account (status mgmt) → 200 OK
+// SoftDeleteAccount → 204 No Content
+// HardDeleteAccount → 204 No Content
+// ListAccounts → 200 OK
+//
+// Gateway: если account отсутствует (optional не задан) при http_status=204 —
+// отправляет пустое тело. Никакой логики кроме этой проверки.
+// ─────────────────────────────────────────────
+
+message AccountResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional Account account = 2;
+}
+
+// SoftDeleteAccountResponse: http_status=204.
+// Поля id/deleted_at заполняются для внутренних нужд (audit),
+// но gateway не включает их в тело клиенту (статус 204 = нет тела).
+message SoftDeleteAccountResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	string id = 2;
+	google.protobuf.Timestamp deleted_at = 3;
+}
+
+// HardDeleteAccountResponse: http_status=204. Аналогично.
+message HardDeleteAccountResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	string id = 2;
+	bool deleted = 3;
+}
+
+message PaginationMeta {
+	int32 page = 1;
+	int32 per_page = 2;
+	int32 total = 3;
+	int32 total_pages = 4;
+}
+
+message ListAccountsResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	repeated Account accounts = 2;
+	PaginationMeta pagination = 3;
+}
+
+message CreateAccountRequest {
+	string email = 1;
+	optional string username = 2;
+	optional string display_name = 3;
+	optional string avatar_url = 4;
+	AccountRole role = 5;
+}
+
+message GetAccountByIdRequest { string id = 1; }
+message GetAccountByEmailRequest { string email = 1; }
+message GetAccountByUsernameRequest { string username = 1; }
+
+message UpdateAccountRequest {
+	string id = 1;
+	optional string username = 2;
+	optional string display_name = 3;
+	optional string avatar_url = 4;
+}
+
+message MarkEmailVerifiedRequest { string id = 1; }
+
+message DisableAccountRequest {
+	string id = 1;
+	optional string reason = 2;
+}
+
+message EnableAccountRequest { string id = 1; }
+
+message BanAccountRequest {
+	string id = 1;
+	string reason = 2;
+	optional google.protobuf.Timestamp ban_expires_at = 3;
+}
+
+message UnbanAccountRequest { string id = 1; }
+message SoftDeleteAccountRequest { string id = 1; }
+message HardDeleteAccountRequest { string id = 1; }
+
+message ListAccountsRequest {
+	int32 page = 1;
+	int32 per_page = 2;
+	optional AccountStatus status = 3;
+	optional AccountRole role = 4;
+	optional string search = 5;
+	AccountSortField sort_by = 6;
+	SortDirection sort_dir = 7;
+}
+
+service AccountVaultAccounts {
+	rpc CreateAccount (CreateAccountRequest) returns (AccountResponse);
+	rpc GetAccountById (GetAccountByIdRequest) returns (AccountResponse);
+	rpc GetAccountByEmail (GetAccountByEmailRequest) returns (AccountResponse);
+	rpc GetAccountByUsername (GetAccountByUsernameRequest) returns (AccountResponse);
+	rpc UpdateAccount (UpdateAccountRequest) returns (AccountResponse);
+	rpc MarkEmailVerified (MarkEmailVerifiedRequest) returns (AccountResponse);
+	rpc DisableAccount (DisableAccountRequest) returns (AccountResponse);
+	rpc EnableAccount (EnableAccountRequest) returns (AccountResponse);
+	rpc BanAccount (BanAccountRequest) returns (AccountResponse);
+	rpc UnbanAccount (UnbanAccountRequest) returns (AccountResponse);
+	rpc SoftDeleteAccount (SoftDeleteAccountRequest) returns (SoftDeleteAccountResponse);
+	rpc HardDeleteAccount (HardDeleteAccountRequest) returns (HardDeleteAccountResponse);
+	rpc ListAccounts (ListAccountsRequest) returns (ListAccountsResponse);
 }

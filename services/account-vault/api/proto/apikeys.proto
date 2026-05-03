@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package account_vault.apikeys;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+enum ApiKeyStatus {
+	API_KEY_STATUS_UNSPECIFIED = 0;
+	API_KEY_STATUS_ACTIVE = 1;
+	API_KEY_STATUS_REVOKED = 2;
+	API_KEY_STATUS_EXPIRED = 3;
+}
+
+message ApiKeyMeta {
+	string id = 1;
+	string account_id = 2;
+	string name = 3;
+	string prefix = 4;
+	ApiKeyStatus status = 5;
+	repeated string scopes = 6;
+	optional google.protobuf.Timestamp expires_at = 7;
+	optional google.protobuf.Timestamp last_used_at = 8;
+	google.protobuf.Timestamp created_at = 9;
+	optional google.protobuf.Timestamp revoked_at = 10;
+}
+
+// ─────────────────────────────────────────────
+// CreateApiKey
+//
+// http_status:
+// 201 Created — ключ создан, raw_key выдан единственный раз
+// 409 Conflict — превышен лимит ключей на аккаунт
+// ─────────────────────────────────────────────
+
+message CreateApiKeyRequest {
+	string account_id = 1;
+	string name = 2;
+	repeated string scopes = 3;
+	optional google.protobuf.Timestamp expires_at = 4;
+}
+
+message CreateApiKeyResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional ApiKeyMeta key = 2; // absent при 409
+	// raw_key присутствует ТОЛЬКО при http_status=201.
+	// После этого запроса восстановить невозможно — хранится только хэш.
+	optional string raw_key = 3;
+}
+
+// ─────────────────────────────────────────────
+// GetApiKeyById
+//
+// http_status:
+// 200 OK — найден
+// 404 Not Found — не существует или не принадлежит account_id
+// ─────────────────────────────────────────────
+
+message GetApiKeyByIdRequest {
+	string id = 1;
+	string account_id = 2;
+}
+
+message GetApiKeyResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional ApiKeyMeta key = 2; // absent при 404
+}
+
+// ─────────────────────────────────────────────
+// GetApiKeyByHash
+// Используется auth-middleware gateway для валидации Bearer-запросов.
+//
+// http_status:
+// 200 OK — ключ найден и активен, owner заполнен
+// 401 Unauthorized — ключ не найден или отозван/истёк
+// ─────────────────────────────────────────────
+
+message GetApiKeyByHashRequest {
+	// SHA-256 хэш входящего ключа. Вычисляет gateway, не клиент.
+	string key_hash = 1;
+}
+
+// Включает минимальный профиль владельца, чтобы gateway авторизовал
+// запрос в один round-trip без дополнительного вызова в AccountVaultAccounts.
+message KeyOwnerAccount {
+	string account_id = 1;
+	string email = 2;
+	string status = 3; // AccountStatus — gateway проверяет активность
+	string role = 4; // AccountRole — для RBAC
+	bool email_verified = 5;
+}
+
+message GetApiKeyByHashResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional ApiKeyMeta key = 2; // absent при 401
+	optional KeyOwnerAccount owner = 3; // absent при 401
+}
+
+// ─────────────────────────────────────────────
+// ListApiKeys
+//
+// http_status: 200 OK (пустой список — тоже 200)
+// ─────────────────────────────────────────────
+
+message ListApiKeysRequest {
+	string account_id = 1;
+	optional ApiKeyStatus status = 2;
+	int32 page = 3;
+	int32 per_page = 4;
+}
+
+message ApiKeyPaginationMeta {
+	int32 page = 1;
+	int32 per_page = 2;
+	int32 total = 3;
+	int32 total_pages = 4;
+}
+
+message ListApiKeysResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	repeated ApiKeyMeta keys = 2;
+	ApiKeyPaginationMeta pagination = 3;
+}
+
+// ─────────────────────────────────────────────
+// RevokeApiKey
+//
+// http_status:
+// 204 No Content — ключ отозван
+// 404 Not Found — ключ не найден или не принадлежит account_id
+// 409 Conflict — ключ уже был отозван
+// ─────────────────────────────────────────────
+
+message RevokeApiKeyRequest {
+	string id = 1;
+	string account_id = 2;
+}
+
+// http_status=204 → gateway не включает поля в тело клиенту.
+message RevokeApiKeyResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	string id = 2;
+	optional google.protobuf.Timestamp revoked_at = 3;
+}
+
+service AccountVaultApiKeys {
+	rpc CreateApiKey (CreateApiKeyRequest) returns (CreateApiKeyResponse);
+	rpc GetApiKeyById (GetApiKeyByIdRequest) returns (GetApiKeyResponse);
+	rpc GetApiKeyByHash (GetApiKeyByHashRequest) returns (GetApiKeyByHashResponse);
+	rpc ListApiKeys (ListApiKeysRequest) returns (ListApiKeysResponse);
+	rpc RevokeApiKey (RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+}

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package account_vault.common;
+
+// ─────────────────────────────────────────────
+// ResponseMeta
+//
+// Присутствует в каждом ...Response.
+// Gateway читает http_status и применяет его напрямую:
+//
+// const { meta, ...payload } = grpcResponse;
+// const body = hasData(payload) ? payload : undefined;
+// return res.status(meta.http_status).json(body);
+//
+// Таким образом gateway не содержит бизнес-логики маппинга —
+// только механический проброс статуса и тела.
+// ─────────────────────────────────────────────
+
+message ResponseMeta {
+	int32 http_status = 1; // 200, 201, 204, 400, 409…
+	optional string message = 2;
+}

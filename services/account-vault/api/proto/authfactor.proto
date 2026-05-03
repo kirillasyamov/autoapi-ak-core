@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package account_vault.authfactor;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum AuthFactorMethod {
+	AUTH_FACTOR_METHOD_UNSPECIFIED = 0;
+	AUTH_FACTOR_METHOD_TOTP = 1;
+}
+
+enum TotpVerifyFailureReason {
+	TOTP_VERIFY_FAILURE_REASON_UNSPECIFIED = 0;
+	TOTP_VERIFY_FAILURE_REASON_INVALID_CODE = 1;
+	TOTP_VERIFY_FAILURE_REASON_EXPIRED_CODE = 2;
+	TOTP_VERIFY_FAILURE_REASON_NOT_ACTIVE = 3;
+	TOTP_VERIFY_FAILURE_REASON_BACKUP_USED = 4;
+}
+
+// ─────────────────────────────────────────────
+// InitiateTotp
+//
+// http_status:
+// 200 OK — pending-состояние создано (или перезаписано)
+// 409 Conflict — TOTP уже активен (нельзя переинициализировать без disable)
+// ─────────────────────────────────────────────
+
+message InitiateTotpRequest {
+	string account_id = 1;
+	optional string issuer = 2;
+}
+
+message InitiateTotpResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	optional string secret = 2; // absent при 409
+	optional string qr_uri = 3; // absent при 409
+	optional google.protobuf.Timestamp expires_at = 4;
+}
+
+// ─────────────────────────────────────────────
+// ConfirmTotp
+//
+// http_status:
+// 200 OK — TOTP активирован, backup-коды выданы
+// 400 Bad Request — неверный код или истёкшее pending-состояние
+// 409 Conflict — TOTP уже активен
+// ─────────────────────────────────────────────
+
+message ConfirmTotpRequest {
+	string account_id = 1;
+	string totp_code = 2;
+}
+
+message ConfirmTotpResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	// Backup-коды — показываются клиенту единственный раз.
+	// Absent при http_status != 200.
+	repeated string backup_codes = 2;
+	optional google.protobuf.Timestamp enabled_at = 3;
+}
+
+// ─────────────────────────────────────────────
+// VerifyTotp
+//
+// http_status:
+// 200 OK — результат проверки (valid=true|false).
+// Как и VerifyPassword — результат, а не HTTP-ошибка.
+// auth-orchestrator решает, что делать с valid=false.
+// ─────────────────────────────────────────────
+
+message VerifyTotpRequest {
+	string account_id = 1;
+	string code = 2;
+}
+
+message VerifyTotpResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	bool valid = 2;
+	bool backup_code_used = 3;
+	optional int32 remaining_backup_codes = 4;
+	optional TotpVerifyFailureReason failure_reason = 5;
+}
+
+// ─────────────────────────────────────────────
+// DisableTotp
+//
+// http_status:
+// 204 No Content — TOTP отключён
+// 400 Bad Request — неверный код
+// 404 Not Found — TOTP не был активен
+// ─────────────────────────────────────────────
+
+message DisableTotpRequest {
+	string account_id = 1;
+	string code = 2;
+}
+
+// http_status=204 → gateway не включает поля в тело клиенту.
+// http_status=400/404 → meta.message содержит причину.
+message DisableTotpResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	string account_id = 2;
+	optional google.protobuf.Timestamp disabled_at = 3;
+}
+
+// ─────────────────────────────────────────────
+// GetAuthFactor
+//
+// http_status: 200 OK
+// ─────────────────────────────────────────────
+
+message GetAuthFactorRequest {
+	string account_id = 1;
+}
+
+message AuthFactor {
+	bool is_enabled = 1;
+	AuthFactorMethod method = 2;
+	int32 remaining_backup_codes = 3;
+	optional google.protobuf.Timestamp enabled_at = 4;
+	optional google.protobuf.Timestamp disabled_at = 5;
+}
+
+message GetAuthFactorResponse {
+	account_vault.common.ResponseMeta meta = 1;
+	AuthFactor auth_factor = 2;
+}
+
+// ─────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────
+
+service AccountVaultAuthFactor {
+	rpc InitiateTotp (InitiateTotpRequest) returns (InitiateTotpResponse);
+	rpc ConfirmTotp (ConfirmTotpRequest) returns (ConfirmTotpResponse);
+	rpc VerifyTotp (VerifyTotpRequest) returns (VerifyTotpResponse);
+	rpc DisableTotp (DisableTotpRequest) returns (DisableTotpResponse);
+	rpc GetAuthFactor (GetAuthFactorRequest) returns (GetAuthFactorResponse);
+}

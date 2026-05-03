@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-package api_keys;
-
-service ApiKeysService {
-  rpc CreateApiKey(CreateApiKeyRequest) returns (ApiKeyResponse);
-  rpc GetApiKey(GetApiKeyRequest) returns (ApiKeyResponse);
-}
